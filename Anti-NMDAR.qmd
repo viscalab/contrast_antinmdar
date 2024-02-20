@@ -1,0 +1,205 @@
+---
+title: "Anti-NMDAR"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(broom)
+```
+
+#### PATIENT E001
+
+```{r}
+e001 <- read_csv("e001.csv", show_col_types = FALSE) |> 
+  rename(Pedestal = presentation_object1_contrastValue, Test = presentation_object2_contrastValue)
+view(e001)
+```
+
+### PSYCHOMETRIC FUNCTION
+
+```{r}
+estimate_psycho <- function(df) {
+  fit <- glm(presentation_response ~ contrast_difference, 
+      family = binomial(logit),    
+      data = df)
+  
+  param <- tidy(fit)
+  
+  pred <- augment(fit, 
+                  newdata = tibble(contrast_difference = seq(-.5, .5, len = 100)), 
+                  type.predict = "response")
+  
+  list(param=param,
+      pred = pred)
+  
+}
+```
+
+### PEDESTAL 0.000
+
+```{r}
+e001_p <- e001 |> 
+  group_by(Pedestal) |> 
+  mutate(contrast_difference = Test 
+         - Pedestal) |> 
+  mutate(contrast_difference = ifelse(
+    presentation_object2_positionX == ("275"), contrast_difference, -contrast_difference)) |> 
+  select(Pedestal, presentation_response, contrast_difference)
+
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.0000) |> 
+  summarise(prop = mean(presentation_response))
+
+
+p1<- e001_p |> filter(Pedestal==0.0000)
+
+fit <- estimate_psycho(p1)
+
+pred1 <- fit$pred
+param1 <- fit$param
+
+ggplot() + geom_line(data = pred1, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+
+
+```
+
+
+### PEDESTAL 0.0088
+
+```{r}
+
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.0088) |> 
+  summarise(prop = mean(presentation_response))
+
+
+p2<- e001_p |> filter(Pedestal==0.0088)
+
+fit <- estimate_psycho(p2)
+
+pred2 <- fit$pred
+param2 <- fit$param
+
+ggplot() + geom_line(data = pred2, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+
+
+```
+### PEDESTAL = 0.0167
+
+```{r}
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.0167) |> 
+  summarise(prop = mean(presentation_response))
+
+p3<- e001_p |> filter(Pedestal==0.0167)
+
+fit <- estimate_psycho(p3)
+
+pred3 <- fit$pred
+param3 <- fit$param
+
+ggplot() + geom_line(data = pred3, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+```
+### PEDESTAL 0.0500
+
+```{r}
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.0500) |> 
+  summarise(prop = mean(presentation_response))
+
+p4<- e001_p |> filter(Pedestal==0.0500)
+
+fit <- estimate_psycho(p4)
+
+pred4 <- fit$pred
+param4 <- fit$param
+
+ggplot() + geom_line(data = pred4, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+```
+### PEDESTAL 0.2000
+
+```{r}
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.2000) |> 
+  summarise(prop = mean(presentation_response))
+
+p5<- e001_p |> filter(Pedestal==0.2000)
+
+fit <- estimate_psycho(p5)
+
+pred5 <- fit$pred
+param5 <- fit$param
+
+ggplot() + geom_line(data = pred5, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+```
+
+```{r}
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  summarise(prop = mean(presentation_response))
+
+fits <- e001_p |>
+   group_by(Pedestal) |> 
+  reframe(estimate_psycho(cur_data()))
+
+fit <- proportion estimate_psycho(p5)
+
+pred5 <- fit$pred
+param5 <- fit$param
+
+ggplot() + 
+  facet_wrap(vars(Pedestal)) +
+  geom_line(data = proportion, 
+                     aes (x=contrast_difference, y=prop)) + 
+  geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+```
+
+### PEDESTAL 0.4500
+
+```{r}
+proportion <- e001_p |> 
+  group_by(Pedestal, contrast_difference) |> 
+  filter(Pedestal == 0.4500) |> 
+  summarise(prop = mean(presentation_response))
+
+p6<- e001_p |> filter(Pedestal==0.4500)
+
+fit <- estimate_psycho(p6)
+
+pred6 <- fit$pred
+param6 <- fit$param
+
+ggplot() + geom_line(data = pred6, aes(x=contrast_difference, y=.fitted)) + geom_point(data = proportion, aes(x = contrast_difference, y = prop))
+```
+
+```{r}
+# Extracting the variable_of_interest from each table
+sens1 <- 85.946595
+sens2 <- 92.3599837
+sens3 <- 47.51340694
+sens4 <- 56.4442637
+sens5 <- 7.1500415
+sens6 <- 12.57914301
+
+# Combining these variables into a new table (column-wise)
+pedestals <- c(0.0000, 0.0088, 0.0167, 0.0500, 0.2000, 0.4500)
+sens <- c(sens1, sens2, sens3, sens4, sens5, sens6)
+sensitivity <- data.frame(pedestals = pedestals, sens = sens)
+view(sensitivity)
+
+ggplot(sensitivity, aes(x = pedestals, y = sens)) + geom_line() + geom_point()
+
+
+
+```
+
