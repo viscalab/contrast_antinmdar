@@ -1,0 +1,163 @@
+---
+title: "scz_and_controls"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(broom)
+library(rlang)
+```
+
+### FUNCTION FOR SELECTING ALL PARTICIPANTS
+
+```{r}
+read_files <- function(path, extension = "csv", ...) {
+  
+  dots_t <- list2(...) |> 
+    as_tibble()
+  
+  if (extension == "csv") {
+    extension <- "*.csv"
+    fun <- read_csv
+  }
+  
+  if (extension == "txt") {
+    extension <- "*.txt"
+    fun <- read_table
+  }
+  
+  tibble(name_file = list.files(path, extension)) |>
+    bind_cols(dots_t) |> 
+    pivot_longer(-name_file, names_to = "chain", values_to = "len") |> 
+    group_by(name_file)  |> 
+    mutate(final = cumsum(len),
+           initial = final - len + 1,
+           str = str_sub(name_file, initial, final)) |>
+    select(name_file, chain, str) |> 
+    pivot_wider(names_from = chain, values_from = str) |> 
+    mutate(name_file_full = paste0(path, "/", name_file)) |> 
+    rowwise() |>  
+    mutate(file = list(fun(name_file_full, show_col_types = FALSE))) |> 
+    ungroup() |>
+    select(-name_file_full, -name_file) |>
+    unnest(file)
+  
+}
+```
+
+### CREATING A TABLE WITH ALL PARTICIPANTS
+
+```{r}
+scz_dat <- read_files("scz_and_controls_data", cond = 1, participant = 3) |> 
+   rename(pedestal = stim1_contrastValue, test = stim0_contrastValue)
+
+
+view(scz_dat)
+```
+
+### GROUPING BY PEDESTAL AND PARTICIPANTS
+
+```{r}
+participants <- scz_dat |> 
+  group_by(pedestal, participant, cond) |> 
+  mutate(contrast_difference = test 
+         - pedestal) |> 
+  mutate(contrast_difference = ifelse(
+    stim0_position_xy == ("275"), contrast_difference, -contrast_difference)) |> 
+  select(pedestal, response, contrast_difference, participant, cond)
+
+view(participants)
+```
+
+### THE PSYCHOMETRIC FUNCTION
+
+```{r}
+estimate_psycho <- function(df) {
+  fit <- glm(response ~ contrast_difference, 
+      family = binomial(logit),    
+      data = df)
+  
+  param <- tidy(fit)
+  
+  pred <- augment(fit, 
+                  newdata = tibble(contrast_difference = seq(-.5, .5, len = 100)), 
+                  type.predict = "response")
+  
+  list(param=param,
+      pred = pred)
+  
+}
+```
+
+### APPLYING PSYCHOMETRIC FUNCTION TO ALL
+
+```{r,fig.width=8,fig.height=10}
+proportions <- participants |> 
+  group_by(pedestal, contrast_difference, participant, cond) |> 
+  summarise(prop = mean(response))
+
+fits <- participants |> 
+  group_by(pedestal, participant, cond) |>
+  nest() |> 
+  mutate(fit = map(data, estimate_psycho)) |> 
+  select(-data) |> 
+  unnest_wider(fit) 
+
+params <- fits |> 
+  select(-pred) |> 
+  unnest(param)
+
+sensitivities <- params |> 
+  filter(term == "contrast_difference") |> 
+  select(pedestal, estimate, cond)
+
+psy_funs <- fits |> 
+  select(-param) |> 
+  unnest(pred)
+
+
+ggplot() + 
+  facet_wrap(vars(pedestal, participant, cond)) +
+  geom_point(data = proportions, aes(x = contrast_difference, y = prop)) +
+  geom_line(data = psy_funs, aes(x = contrast_difference, y = .fitted))
+```
+
+### MEAN AND CI OF SENSITIVITY
+
+```{r}
+mean_sensitivity <- sensitivities |> 
+  group_by(pedestal, cond) |> 
+  summarise(sensitivity = mean(estimate))
+mean_sensitivity
+
+calculate_t_ci <- function(.x) {
+  t.test(.x) %>% 
+    tidy() %>% 
+    select(estimate, conf.low, conf.high)
+}
+
+ci_results <- sensitivities |> 
+  group_by(pedestal, cond) |> 
+  summarise(calculate_t_ci(estimate))
+ci_results
+```
+
+### SENSITIVITIES OF ALL PARTICIPANTS FOR ALL PEDESTALS WITH CI's
+
+```{r}
+ggplot() +
+  facet_wrap(vars(cond)) +
+  geom_point(data = sensitivities, aes(x = pedestal, y = estimate)) +
+  geom_point(data = mean_sensitivity , aes(x = pedestal, y = sensitivity), color = "red", size = 3) +
+    geom_line(data = mean_sensitivity , aes(x = pedestal, y = sensitivity, group = 1), color = "red") +
+  geom_errorbar(data = ci_results, aes(x = pedestal, ymin = conf.low, ymax = conf.high), color = "red", width = 0.05) +
+ # scale_x_discrete() +
+  scale_y_log10() +
+  labs(x = "Pedestal Values", y = "Sensitivity")
+```
+
